@@ -13,9 +13,6 @@ Descrição:
 """
 
 import os
-# Corrige incompatibilidade do protobuf com o runtime do gRPC/OpenTelemetry no Python 3.14 do Streamlit Cloud
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
-
 import glob
 import time
 import streamlit as st
