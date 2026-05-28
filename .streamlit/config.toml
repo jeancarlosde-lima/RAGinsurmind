@@ -1,0 +1,34 @@
+# ============================================================
+# Configuração do Servidor Streamlit — Acesso em Rede Local
+# ============================================================
+# Esta configuração permite que qualquer pessoa na mesma rede
+# acesse o chatbot usando o IP da máquina host: http://<IP>:8501
+# ============================================================
+
+[server]
+# Escuta em todas as interfaces de rede (0.0.0.0 = rede local)
+address = "0.0.0.0"
+port = 8501
+
+# Desativa a verificação de e-mail do Streamlit
+headless = true
+
+# Permite upload de arquivos maiores (útil para PDFs grandes)
+maxUploadSize = 200
+
+# Desativa proteção CORS e XSRF para conexões através de túneis públicos
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+# Desabilita coleta de telemetria
+gatherUsageStats = false
+
+[theme]
+# Tema escuro elegante para o chatbot
+base = "dark"
+primaryColor = "#4CAF50"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#1A1F2E"
+textColor = "#FAFAFA"
+font = "sans serif"
