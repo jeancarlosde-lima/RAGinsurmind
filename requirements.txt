@@ -8,9 +8,10 @@
 streamlit>=1.35.0
 
 # --- LangChain (Core + Integrações) ---
-langchain>=0.2.0
-langchain-community>=0.2.0
-langchain-chroma>=0.1.2
+# Versões fixadas para garantir compatibilidade entre si
+langchain==0.3.25
+langchain-community==0.3.24
+langchain-chroma==0.1.4
 
 # --- Google Gemini (LLM + Embeddings em nuvem) ---
 langchain-google-genai>=1.0.6
@@ -19,7 +20,11 @@ langchain-google-genai>=1.0.6
 pypdf>=4.2.0
 
 # --- Banco Vetorial ---
-chromadb>=0.5.0
+# chromadb 0.5.x é a última versão estável sem conflitos de opentelemetry/protobuf
+chromadb==0.5.23
+
+# --- Protobuf fixado para evitar conflito com opentelemetry ---
+protobuf>=3.20.0,<5.0.0
 
 # --- Variáveis de ambiente ---
 python-dotenv>=1.0.0
