@@ -27,7 +27,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 CHROMA_DIR = "./chroma_db"                          # Diretório de persistência do ChromaDB
 COLLECTION_NAME = "insurmind_agro"                  # Nome da coleção no ChromaDB
-EMBEDDING_MODEL = "models/gemini-embedding-001"     # Modelo de embeddings Google Gemini (nuvem)
+EMBEDDING_MODEL = "models/text-embedding-004"        # Modelo de embeddings Google Gemini (estável e disponível)
 GEMINI_MODEL = "gemini-3.5-flash"                   # Modelo LLM Google Gemini (generoso no free tier)
 CHUNK_SIZE = 1000                                   # Tamanho dos chunks de texto
 CHUNK_OVERLAP = 200                                 # Sobreposição entre chunks
@@ -44,15 +44,17 @@ def get_embeddings():
     Inicializa e retorna o modelo de embeddings Google Gemini (nuvem).
     Nenhum arquivo de modelo é baixado localmente — tudo via API.
     O cache do Streamlit garante que o objeto seja criado apenas uma vez.
+    Lê a API key via st.secrets (Streamlit Cloud) ou os.getenv() (local).
     """
     from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-    api_key = os.getenv("GOOGLE_API_KEY")
+    # Lê a chave de API: st.secrets tem prioridade (Streamlit Cloud), depois .env local
+    api_key = st.secrets.get("GOOGLE_API_KEY", None) or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         st.error(
             "❌ **GOOGLE_API_KEY não encontrada.**\n\n"
-            "Verifique se o arquivo `.env` existe na raiz do projeto "
-            "e contém a variável `GOOGLE_API_KEY=<sua-chave>`."
+            "No Streamlit Cloud: adicione em Settings → Secrets.\n"
+            "Localmente: verifique o arquivo `.env` na raiz do projeto."
         )
         st.stop()
 
@@ -219,14 +221,16 @@ def load_vectorstore(embeddings):
 
 def get_llm():
     """
-    Inicializa e retorna o modelo de linguagem Google Gemini 1.5 Pro.
+    Inicializa e retorna o modelo de linguagem Google Gemini.
+    Lê a API key via st.secrets (Streamlit Cloud) ou os.getenv() (local).
 
     Returns:
         Instância do ChatGoogleGenerativeAI ou None em caso de falha.
     """
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    api_key = os.getenv("GOOGLE_API_KEY")
+    # Lê a chave de API: st.secrets tem prioridade (Streamlit Cloud), depois .env local
+    api_key = st.secrets.get("GOOGLE_API_KEY", None) or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         return None
 
