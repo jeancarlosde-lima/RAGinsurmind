@@ -26,7 +26,7 @@ load_dotenv()
 CHROMA_DIR      = "./chroma_db"
 COLLECTION_NAME = "insurmind_agro_v6"
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-GEMINI_MODEL    = "gemini-2.0-flash"
+GEMINI_MODEL    = "gemini-2.5-flash"
 CHUNK_SIZE      = 1000
 CHUNK_OVERLAP   = 200
 TOP_K_DOCS      = 8
@@ -133,20 +133,15 @@ def get_llm():
 # Query RAG — direto e transparente
 # ---------------------------------------------------------------------------
 
-PROMPT = """Você é um assistente de seguros agrícolas da Insurmind.
-
-Os TRECHOS abaixo são extraídos diretamente dos documentos oficiais da apólice.
-Sua tarefa é responder a PERGUNTA usando APENAS o conteúdo dos TRECHOS.
-
-INSTRUÇÕES:
-- Leia todos os trechos com atenção antes de responder.
-- Se a resposta estiver nos trechos, responda de forma clara e direta.
-- Só diga "Não encontrei essa informação" se os trechos realmente não contiverem nada relevante.
-- NUNCA use conhecimento externo. NUNCA invente.
-- Responda em português do Brasil.
-
-TRECHOS DOS DOCUMENTOS:
+PROMPT = """<contexto_dos_documentos>
 {context}
+</contexto_dos_documentos>
+
+Você é um assistente de seguros agrícolas. Acima estão trechos extraídos dos documentos oficiais da apólice Insurmind.
+
+Responda a pergunta abaixo usando SOMENTE o conteúdo dentro de <contexto_dos_documentos>.
+Não use nenhum conhecimento externo. Não invente. Responda em português do Brasil.
+Se os trechos não contiverem a informação, diga: "Não encontrei essa informação nos documentos disponíveis."
 
 PERGUNTA: {question}
 
