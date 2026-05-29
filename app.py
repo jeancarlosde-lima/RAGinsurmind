@@ -26,7 +26,7 @@ load_dotenv()
 # Constantes de configuração
 # ---------------------------------------------------------------------------
 CHROMA_DIR = "./chroma_db"                          # Diretório de persistência do ChromaDB
-COLLECTION_NAME = "insurmind_agro"                  # Nome da coleção no ChromaDB
+COLLECTION_NAME = "insurmind_agro_v2"                  # Nome da coleção no ChromaDB (versão 2 multilíngue)
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" # Modelo multilíngue para português
 GEMINI_MODEL = "gemini-2.5-flash"                   # Modelo LLM Google Gemini (estável e com cota disponível)
 CHUNK_SIZE = 1000                                   # Tamanho dos chunks de texto
@@ -358,7 +358,7 @@ def setup_rag(force_reload: bool = False):
     # --- Processa PDFs se necessário ---
     if vectorstore is None or force_reload:
         if force_reload:
-            # 1. Limpa a coleção do ChromaDB para evitar duplicados, se houver referências ativas
+            # 1. Limpa a coleção do ChromaDB de forma segura, sem deletar a pasta fisicamente para evitar erros de concorrência
             for vs in [st.session_state.vectorstore, vectorstore]:
                 if vs is not None:
                     try:
@@ -368,15 +368,6 @@ def setup_rag(force_reload: bool = False):
             
             st.session_state.vectorstore = None
             vectorstore = None
-
-            # 2. Tenta remover o diretório fisicamente, mas de forma segura contra locks de arquivo
-            if os.path.isdir(CHROMA_DIR):
-                try:
-                    import shutil
-                    shutil.rmtree(CHROMA_DIR)
-                    st.info("🗑️ Diretório do índice antigo removido.")
-                except Exception as e:
-                    st.warning("⚠️ O banco vetorial antigo está em uso. Os dados antigos serão limpos e reindexados.")
 
         pdf_paths = scan_pdfs(".")
 
