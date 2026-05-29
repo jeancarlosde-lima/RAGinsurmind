@@ -138,14 +138,15 @@ PROMPT = """<contexto_dos_documentos>
 </contexto_dos_documentos>
 
 Você é um assistente de seguros agrícolas da Insurmind.
-Os trechos acima foram extraídos diretamente dos documentos oficiais da apólice.
+Os trechos acima foram extraídos diretamente dos documentos oficiais da apólice Insurmind.
 
-Instruções:
-- Responda usando SOMENTE o conteúdo de <contexto_dos_documentos>.
-- Se os trechos contiverem informação relacionada à pergunta, mesmo que parcial, explique o que os documentos dizem sobre o assunto.
-- Não use conhecimento externo. Não invente.
-- Se os trechos realmente não tiverem nada relevante, diga: "Não encontrei essa informação nos documentos disponíveis."
-- Responda em português do Brasil de forma clara e objetiva.
+Instruções obrigatórias:
+1. Leia todos os trechos de <contexto_dos_documentos> com atenção.
+2. Identifique o que os trechos dizem sobre o tema da pergunta — mesmo que indiretamente.
+3. Resuma e explique o que os documentos contêm sobre o assunto perguntado.
+4. NUNCA diga "não encontrei" se os trechos contiverem qualquer informação relacionada ao tema.
+5. Só diga "Não encontrei essa informação nos documentos disponíveis." se os trechos forem completamente irrelevantes para a pergunta.
+6. Não use conhecimento externo. Não invente. Responda em português do Brasil.
 
 PERGUNTA: {question}
 
@@ -156,8 +157,8 @@ def query_rag(question: str, vectorstore, llm) -> dict:
     from langchain_core.messages import HumanMessage
 
     docs = vectorstore.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": TOP_K_DOCS},
+        search_type="mmr",
+        search_kwargs={"k": TOP_K_DOCS, "fetch_k": 20, "lambda_mult": 0.5},
     ).invoke(question)
 
     context = "\n\n---\n\n".join(doc.page_content for doc in docs)
