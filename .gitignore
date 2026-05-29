@@ -12,9 +12,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Banco de dados vetorial local (gerado dinamicamente)
-chroma_db/
+# Banco de dados vetorial de teste
 test_chroma_db/
+
+# O chroma_db PRINCIPAL é versionado no repositório para evitar re-indexação no Streamlit Cloud
 
 # IDEs e configurações de sistema
 .vscode/
