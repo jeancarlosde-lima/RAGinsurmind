@@ -3,14 +3,12 @@ Chatbot RAG — Insurmind Agro (Google Gemini)
 =============================================
 Stack: Streamlit + LangChain + ChromaDB + Google Gemini 2.5 Flash
 
-Correções v4:
-  1. gemini-2.5-flash + transport=rest + timeout=90 + max_retries=1
-  2. st.secrets com try/except correto
-  3. temperature=0 para ancorar respostas nas fontes
-  4. [NOVO] Prefixo E5 correto: "passage: " nos docs, "query: " nas perguntas
-     → sem isso o ChromaDB não encontra os chunks certos (causa do "não encontrei")
-  5. [NOVO] Prompt reforçado com instrução explícita anti-alucinação
-  6. [NOVO] EmbeddingsFunctionWithPrefix: aplica prefixo automaticamente no add_documents
+v6 — versão limpa e direta:
+  - Embedding simples sem prefixo (paraphrase-multilingual-MiniLM-L12-v2)
+  - Query RAG via invoke() direto, sem LCEL aninhado
+  - LLM com transport=rest + timeout + max_retries corretos
+  - st.secrets com try/except robusto
+  - Sem classes wrapper desnecessárias
 """
 
 import os
@@ -26,50 +24,28 @@ load_dotenv()
 # Constantes
 # ---------------------------------------------------------------------------
 CHROMA_DIR      = "./chroma_db"
-COLLECTION_NAME = "insurmind_agro_v4"          # v4 — reindexação necessária por mudança de embedding
-EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+COLLECTION_NAME = "insurmind_agro_v6"
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 GEMINI_MODEL    = "gemini-2.5-flash"
 CHUNK_SIZE      = 1000
 CHUNK_OVERLAP   = 200
 TOP_K_DOCS      = 8
 
-
 # ---------------------------------------------------------------------------
-# Embeddings com prefixo E5 correto
+# Embeddings — simples, sem prefixo
 # ---------------------------------------------------------------------------
-
-class E5Embeddings:
-    """
-    Wrapper sobre HuggingFaceEmbeddings que aplica automaticamente os prefixos
-    obrigatórios do modelo intfloat/multilingual-e5-*:
-      - Documentos (indexação): "passage: <texto>"
-      - Queries (busca):        "query: <texto>"
-    Sem esses prefixos o espaço vetorial fica desalinhado e a recuperação falha.
-    """
-    def __init__(self):
-        from langchain_community.embeddings import HuggingFaceEmbeddings
-        self._model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        prefixed = [f"passage: {t}" for t in texts]
-        return self._model.embed_documents(prefixed)
-
-    def embed_query(self, text: str) -> list[float]:
-        return self._model.embed_query(f"query: {text}")
-
 
 @st.cache_resource(show_spinner=False)
 def get_embeddings():
-    return E5Embeddings()
-
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
 # ---------------------------------------------------------------------------
 # PDFs
 # ---------------------------------------------------------------------------
 
 def scan_pdfs(root_dir: str = ".") -> list[str]:
-    pdf_files = glob.glob(os.path.join(root_dir, "*.pdf"))
-    return sorted(os.path.abspath(p) for p in pdf_files)
+    return sorted(os.path.abspath(p) for p in glob.glob(os.path.join(root_dir, "*.pdf")))
 
 
 def load_and_split_pdfs(pdf_paths: list[str]):
@@ -79,39 +55,31 @@ def load_and_split_pdfs(pdf_paths: list[str]):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
-        length_function=len,
     )
-
     all_docs = []
+    bar = st.progress(0, text="Iniciando processamento...")
     total = len(pdf_paths)
-    progress_bar = st.progress(0, text="Iniciando processamento dos PDFs...")
 
-    for idx, pdf_path in enumerate(pdf_paths):
-        nome = Path(pdf_path).name
-        progress_bar.progress(
-            idx / total,
-            text=f"📄 Processando ({idx + 1}/{total}): {nome}",
-        )
+    for idx, path in enumerate(pdf_paths):
+        nome = Path(path).name
+        bar.progress(idx / total, text=f"📄 ({idx+1}/{total}): {nome}")
         try:
-            loader = PyPDFLoader(pdf_path)
-            pages = loader.load()
-            chunks = splitter.split_documents(pages)
-            all_docs.extend(chunks)
+            pages = PyPDFLoader(path).load()
+            all_docs.extend(splitter.split_documents(pages))
         except Exception as e:
-            st.warning(f"⚠️ Erro ao processar '{nome}': {e}")
+            st.warning(f"⚠️ Erro em '{nome}': {e}")
 
-    progress_bar.progress(1.0, text="✅ PDFs processados!")
+    bar.progress(1.0, text="✅ Concluído!")
     time.sleep(0.5)
-    progress_bar.empty()
+    bar.empty()
     return all_docs
-
 
 # ---------------------------------------------------------------------------
 # Vector Store
 # ---------------------------------------------------------------------------
 
 @st.cache_resource(show_spinner=False)
-def get_vectorstore_instance(_embeddings):
+def get_vectorstore(_embeddings):
     from langchain_chroma import Chroma
     import shutil
 
@@ -123,23 +91,14 @@ def get_vectorstore_instance(_embeddings):
         )
     except Exception:
         try:
-            if os.path.exists(CHROMA_DIR):
-                shutil.rmtree(CHROMA_DIR)
+            shutil.rmtree(CHROMA_DIR)
         except Exception:
             pass
-        fallback_dir = f"{CHROMA_DIR}_fallback"
-        try:
-            return Chroma(
-                collection_name=COLLECTION_NAME,
-                embedding_function=_embeddings,
-                persist_directory=fallback_dir,
-            )
-        except Exception:
-            return Chroma(
-                collection_name=COLLECTION_NAME,
-                embedding_function=_embeddings,
-            )
-
+        return Chroma(
+            collection_name=COLLECTION_NAME,
+            embedding_function=_embeddings,
+            persist_directory=CHROMA_DIR,
+        )
 
 # ---------------------------------------------------------------------------
 # LLM
@@ -152,9 +111,8 @@ def get_llm():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
     except (KeyError, FileNotFoundError):
-        pass
-    if not api_key:
         api_key = os.getenv("GOOGLE_API_KEY")
+
     if not api_key:
         return None
 
@@ -163,120 +121,94 @@ def get_llm():
             model=GEMINI_MODEL,
             google_api_key=api_key,
             temperature=0,
-            transport="rest",        # CRÍTICO: gRPC é bloqueado no Streamlit Cloud
+            transport="rest",
             timeout=90,
             max_retries=1,
             convert_system_message_to_human=True,
         )
     except Exception as e:
-        st.sidebar.warning(f"⚠️ Erro ao conectar ao Gemini: {e}")
+        st.sidebar.warning(f"⚠️ Erro Gemini: {e}")
         return None
 
-
 # ---------------------------------------------------------------------------
-# Pipeline RAG
+# Query RAG — direto e transparente
 # ---------------------------------------------------------------------------
 
-def build_rag_chain(vectorstore, llm):
-    from langchain_core.runnables import RunnableParallel
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.prompts import ChatPromptTemplate
+PROMPT = """Você é um assistente especialista em seguros agrícolas da Insurmind.
 
-    # Prompt reforçado: proíbe explicitamente uso de conhecimento externo
-    prompt_template = """Você é um assistente de seguros agrícolas da Insurmind.
+Responda SOMENTE com base nos trechos abaixo. Se a resposta não estiver nos trechos,
+diga: "Não encontrei essa informação nos documentos disponíveis."
+Não use conhecimento externo. Responda em português do Brasil.
 
-REGRAS ABSOLUTAS — leia antes de responder:
-1. USE EXCLUSIVAMENTE o texto dos TRECHOS DO DOCUMENTO abaixo.
-2. NUNCA use conhecimento próprio, definições gerais ou fontes externas.
-3. Se a resposta não estiver nos trechos, responda EXATAMENTE: "Não encontrei essa informação nos documentos disponíveis."
-4. Não complemente, não infira, não expanda além do que está escrito.
-5. Responda em português do Brasil, de forma clara e direta.
-
-TRECHOS DO DOCUMENTO:
+TRECHOS:
 {context}
 
-PERGUNTA DO USUÁRIO: {question}
+PERGUNTA: {question}
 
-RESPOSTA (baseada SOMENTE nos trechos acima):"""
+RESPOSTA:"""
 
-    prompt = ChatPromptTemplate.from_template(prompt_template)
 
-    retriever = vectorstore.as_retriever(
+def query_rag(question: str, vectorstore, llm) -> dict:
+    from langchain_core.messages import HumanMessage
+
+    docs = vectorstore.as_retriever(
         search_type="similarity",
         search_kwargs={"k": TOP_K_DOCS},
-    )
+    ).invoke(question)
 
-    def format_docs(docs):
-        return "\n\n---\n\n".join(doc.page_content for doc in docs)
+    context = "\n\n---\n\n".join(doc.page_content for doc in docs)
+    prompt = PROMPT.format(context=context, question=question)
+    response = llm.invoke([HumanMessage(content=prompt)])
 
-    # O E5Embeddings.embed_query já adiciona "query: " automaticamente,
-    # então NÃO precisamos mais do prepare_query manual aqui.
-    setup = RunnableParallel(
-        {
-            "context": (lambda x: x["query"]) | retriever | format_docs,
-            "question": (lambda x: x["query"]),
-            "source_documents": (lambda x: x["query"]) | retriever,
-        }
-    )
-
-    chain = setup | RunnableParallel(
-        {
-            "result": prompt | llm | StrOutputParser(),
-            "source_documents": lambda x: x["source_documents"],
-        }
-    )
-
-    return chain
-
+    return {
+        "result": response.content,
+        "source_documents": docs,
+    }
 
 # ---------------------------------------------------------------------------
-# Estado da sessão
+# Session State
 # ---------------------------------------------------------------------------
 
 def init_session_state():
-    defaults = {
+    for key, val in {
         "messages": [],
         "vectorstore": None,
-        "rag_chain": None,
+        "llm": None,
         "llm_available": False,
         "docs_loaded": False,
-    }
-    for key, val in defaults.items():
+    }.items():
         if key not in st.session_state:
             st.session_state[key] = val
 
-
 # ---------------------------------------------------------------------------
-# Setup RAG
+# Setup
 # ---------------------------------------------------------------------------
 
 def setup_rag(force_reload: bool = False):
     embeddings = get_embeddings()
-    vectorstore = get_vectorstore_instance(embeddings)
+    vectorstore = get_vectorstore(embeddings)
 
     if force_reload:
-        with st.spinner("🔄 Limpando índice e reindexando PDFs..."):
+        with st.spinner("🔄 Limpando índice..."):
             try:
                 vectorstore.reset_collection()
             except Exception:
                 pass
-            st.session_state.vectorstore = None
 
     try:
         count = vectorstore._collection.count()
-        if count == 0 and not force_reload:
-            force_reload = True
+        needs_index = count == 0 or force_reload
     except Exception:
-        force_reload = True
+        needs_index = True
         count = 0
 
-    if not force_reload:
-        st.sidebar.success(f"✅ ChromaDB conectado ({count} chunks)")
+    if not needs_index:
+        st.sidebar.success(f"✅ {count} chunks indexados")
 
-    if force_reload:
+    if needs_index:
         pdf_paths = scan_pdfs(".")
         if not pdf_paths:
-            st.error("❌ Nenhum PDF encontrado. Adicione arquivos `.pdf` na pasta raiz.")
+            st.error("❌ Nenhum PDF encontrado na pasta raiz.")
             st.stop()
 
         st.sidebar.info(f"📄 {len(pdf_paths)} PDF(s) encontrado(s)")
@@ -287,39 +219,33 @@ def setup_rag(force_reload: bool = False):
             st.stop()
 
         with st.spinner("💾 Indexando no ChromaDB..."):
-            BATCH_SIZE = 100
-            lotes = [docs[i:i + BATCH_SIZE] for i in range(0, len(docs), BATCH_SIZE)]
-            barra = st.progress(0, text="Iniciando indexação...")
+            BATCH = 100
+            lotes = [docs[i:i+BATCH] for i in range(0, len(docs), BATCH)]
+            bar = st.progress(0, text="Indexando...")
             for idx, lote in enumerate(lotes):
-                barra.progress(
-                    idx / len(lotes),
-                    text=f"Lote {idx + 1}/{len(lotes)} — {len(lote)} chunks...",
-                )
+                bar.progress(idx / len(lotes), text=f"Lote {idx+1}/{len(lotes)}...")
                 vectorstore.add_documents(lote)
-            barra.progress(1.0, text="✅ Indexação concluída!")
+            bar.progress(1.0, text="✅ Pronto!")
             time.sleep(0.5)
-            barra.empty()
-            st.success(f"✅ {len(docs)} chunks indexados com sucesso!")
+            bar.empty()
+            st.success(f"✅ {len(docs)} chunks indexados!")
 
     st.session_state.vectorstore = vectorstore
     st.session_state.docs_loaded = True
 
-    with st.spinner(f"✨ Conectando ao Gemini ({GEMINI_MODEL})..."):
+    with st.spinner(f"✨ Conectando ao Gemini..."):
         llm = get_llm()
 
     if llm is None:
         st.session_state.llm_available = False
         st.sidebar.error(
-            "⚠️ **Google Gemini indisponível!**\n\n"
-            "Verifique:\n"
-            "• `GOOGLE_API_KEY` no `.env` (local) ou **Settings → Secrets** (Cloud)\n"
-            "• Cota disponível em aistudio.google.com"
+            "⚠️ **Gemini indisponível**\n\n"
+            "Verifique `GOOGLE_API_KEY` no `.env` ou Settings → Secrets"
         )
     else:
+        st.session_state.llm = llm
         st.session_state.llm_available = True
-        st.session_state.rag_chain = build_rag_chain(vectorstore, llm)
-        st.sidebar.success(f"✨ Gemini ({GEMINI_MODEL}) conectado!")
-
+        st.sidebar.success(f"✨ {GEMINI_MODEL} conectado!")
 
 # ---------------------------------------------------------------------------
 # UI
@@ -332,9 +258,9 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded",
     )
-
     init_session_state()
 
+    # Sidebar
     with st.sidebar:
         st.image("https://img.icons8.com/fluency/96/wheat.png", width=64)
         st.title("Insurmind Agro")
@@ -346,10 +272,9 @@ def main():
             setup_rag(force_reload=False)
 
         st.divider()
-        if st.button("🔄 Recarregar PDFs", use_container_width=True,
-                     help="Use se novos PDFs foram adicionados."):
+        if st.button("🔄 Recarregar PDFs", use_container_width=True):
             get_embeddings.clear()
-            get_vectorstore_instance.clear()
+            get_vectorstore.clear()
             st.session_state.docs_loaded = False
             st.session_state.messages = []
             setup_rag(force_reload=True)
@@ -370,8 +295,8 @@ def main():
             st.rerun()
 
         st.divider()
-        st.caption(f"🤖 Modelo: `{GEMINI_MODEL}`")
-        st.caption("Stack: Streamlit · LangChain · ChromaDB · Gemini")
+        st.caption(f"🤖 `{GEMINI_MODEL}`")
+        st.caption("Streamlit · LangChain · ChromaDB · Gemini")
 
     # Chat
     st.title("🌾 Assistente de Seguros Agrícolas")
@@ -381,17 +306,14 @@ def main():
     )
 
     if not st.session_state.llm_available:
-        st.warning(
-            "⚠️ **Google Gemini indisponível.** Verifique `GOOGLE_API_KEY` "
-            "no `.env` (local) ou em **Settings → Secrets** (Streamlit Cloud)."
-        )
+        st.warning("⚠️ **Google Gemini indisponível.** Verifique a `GOOGLE_API_KEY`.")
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if message.get("sources"):
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("sources"):
                 with st.expander("📚 Fontes utilizadas", expanded=False):
-                    for src in message["sources"]:
+                    for src in msg["sources"]:
                         st.caption(f"📄 **{src['arquivo']}** — Página {src['pagina']}")
 
     if prompt := st.chat_input(
@@ -404,30 +326,31 @@ def main():
 
         with st.chat_message("assistant"):
             if not st.session_state.llm_available:
-                resposta = "⚠️ Google Gemini indisponível. Verifique a chave de API."
-                st.markdown(resposta)
-                st.session_state.messages.append({"role": "assistant", "content": resposta})
+                resp = "⚠️ Gemini indisponível. Verifique a chave de API."
+                st.markdown(resp)
+                st.session_state.messages.append({"role": "assistant", "content": resp})
             else:
                 with st.spinner("🤔 Consultando os documentos..."):
                     try:
-                        resultado = st.session_state.rag_chain.invoke({"query": prompt})
-                        resposta = resultado.get("result", "Não foi possível gerar uma resposta.")
-                        source_docs = resultado.get("source_documents", [])
+                        resultado = query_rag(
+                            question=prompt,
+                            vectorstore=st.session_state.vectorstore,
+                            llm=st.session_state.llm,
+                        )
+                        resposta = resultado["result"]
+                        source_docs = resultado["source_documents"]
 
-                        fontes = []
-                        fontes_vistas = set()
+                        fontes, vistas = [], set()
                         for doc in source_docs:
-                            meta = doc.metadata
-                            arquivo = Path(meta.get("source", "Desconhecido")).name
-                            pagina = meta.get("page", "?")
-                            chave = f"{arquivo}_{pagina}"
-                            if chave not in fontes_vistas:
-                                fontes_vistas.add(chave)
-                                p = (pagina + 1) if isinstance(pagina, int) else pagina
-                                fontes.append({"arquivo": arquivo, "pagina": p})
+                            arq = Path(doc.metadata.get("source", "?")).name
+                            pag = doc.metadata.get("page", "?")
+                            chave = f"{arq}_{pag}"
+                            if chave not in vistas:
+                                vistas.add(chave)
+                                p = (pag + 1) if isinstance(pag, int) else pag
+                                fontes.append({"arquivo": arq, "pagina": p})
 
                         st.markdown(resposta)
-
                         if fontes:
                             with st.expander("📚 Fontes utilizadas", expanded=False):
                                 for src in fontes:
@@ -440,11 +363,9 @@ def main():
                         })
 
                     except Exception as e:
-                        erro_msg = f"❌ Erro ao processar sua pergunta: {str(e)}"
-                        st.error(erro_msg)
-                        st.session_state.messages.append(
-                            {"role": "assistant", "content": erro_msg}
-                        )
+                        erro = f"❌ Erro: {str(e)}"
+                        st.error(erro)
+                        st.session_state.messages.append({"role": "assistant", "content": erro})
 
 
 if __name__ == "__main__":
