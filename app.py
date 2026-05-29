@@ -27,11 +27,11 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 CHROMA_DIR = "./chroma_db"                          # Diretório de persistência do ChromaDB
 COLLECTION_NAME = "insurmind_agro_v2"                  # Nome da coleção no ChromaDB (versão 2 multilíngue)
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" # Modelo multilíngue para português
+EMBEDDING_MODEL = "intfloat/multilingual-e5-small" # Modelo de embeddings multilíngue de alta precisão
 GEMINI_MODEL = "gemini-2.5-flash"                   # Modelo LLM Google Gemini (estável e com cota disponível)
 CHUNK_SIZE = 1000                                   # Tamanho dos chunks de texto
 CHUNK_OVERLAP = 200                                 # Sobreposição entre chunks
-TOP_K_DOCS = 4                                      # Número de chunks recuperados por consulta
+TOP_K_DOCS = 8                                      # Número de chunks recuperados por consulta
 
 
 # ---------------------------------------------------------------------------
@@ -280,11 +280,17 @@ Resposta:"""
     # O pipeline RAG com retorno de documentos fontes usando RunnableParallel.
     # Como st.session_state.rag_chain.invoke({"query": prompt}) envia a chave "query",
     # mapeamos a extração desse valor para o retriever e prompt.
+    # O modelo E5 requer o prefixo "query: " para melhor desempenho na busca.
+    def prepare_query(q):
+        if "e5" in EMBEDDING_MODEL:
+            return f"query: {q}"
+        return q
+
     setup_and_retrieval = RunnableParallel(
         {
-            "context": (lambda x: x["query"]) | retriever | format_docs,
+            "context": (lambda x: prepare_query(x["query"])) | retriever | format_docs,
             "question": (lambda x: x["query"]),
-            "source_documents": (lambda x: x["query"]) | retriever
+            "source_documents": (lambda x: prepare_query(x["query"])) | retriever
         }
     )
 

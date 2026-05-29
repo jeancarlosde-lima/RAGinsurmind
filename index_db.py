@@ -12,7 +12,7 @@ load_dotenv()
 
 CHROMA_DIR = "./chroma_db"
 COLLECTION_NAME = "insurmind_agro"
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
