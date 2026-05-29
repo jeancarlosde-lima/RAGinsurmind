@@ -28,7 +28,7 @@ load_dotenv()
 CHROMA_DIR = "./chroma_db"                          # Diretório de persistência do ChromaDB
 COLLECTION_NAME = "insurmind_agro_v2"                  # Nome da coleção no ChromaDB (versão 2 multilíngue)
 EMBEDDING_MODEL = "intfloat/multilingual-e5-small" # Modelo de embeddings multilíngue de alta precisão
-GEMINI_MODEL = "gemini-1.5-flash"                   # Modelo LLM (gemini-1.5-flash possui limite gratuito de 1500 requisições/dia)
+GEMINI_MODEL = "gemini-3.1-pro"                     # Modelo LLM Google Gemini conforme solicitado
 CHUNK_SIZE = 1000                                   # Tamanho dos chunks de texto
 CHUNK_OVERLAP = 200                                 # Sobreposição entre chunks
 TOP_K_DOCS = 8                                      # Número de chunks recuperados por consulta
@@ -176,8 +176,6 @@ def get_llm():
             # Converte saída de HumanMessage para string simples
             convert_system_message_to_human=True,
         )
-        # Teste rápido de conectividade com a API
-        llm.invoke("Responda apenas: ok")
         return llm
     except Exception as e:
         st.sidebar.warning(f"⚠️ Erro ao conectar ao Gemini: {e}")
