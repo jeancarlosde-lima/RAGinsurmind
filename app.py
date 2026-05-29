@@ -28,7 +28,7 @@ load_dotenv()
 CHROMA_DIR = "./chroma_db"                          # Diretório de persistência do ChromaDB
 COLLECTION_NAME = "insurmind_agro"                  # Nome da coleção no ChromaDB
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" # Modelo de embeddings local leve
-GEMINI_MODEL = "gemini-3.5-flash"                   # Modelo LLM Google Gemini (generoso no free tier)
+GEMINI_MODEL = "gemini-2.5-flash"                   # Modelo LLM Google Gemini (estável e com cota disponível)
 CHUNK_SIZE = 1000                                   # Tamanho dos chunks de texto
 CHUNK_OVERLAP = 200                                 # Sobreposição entre chunks
 TOP_K_DOCS = 4                                      # Número de chunks recuperados por consulta
