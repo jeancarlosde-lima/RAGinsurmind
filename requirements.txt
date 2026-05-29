@@ -28,3 +28,7 @@ protobuf>=3.20.0,<5.0.0
 
 # --- Variáveis de ambiente ---
 python-dotenv>=1.0.0
+
+# --- Embeddings Locais ---
+sentence-transformers>=2.2.2
+

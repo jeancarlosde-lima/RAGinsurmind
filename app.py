@@ -27,7 +27,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 CHROMA_DIR = "./chroma_db"                          # Diretório de persistência do ChromaDB
 COLLECTION_NAME = "insurmind_agro"                  # Nome da coleção no ChromaDB
-EMBEDDING_MODEL = "models/text-embedding-004"        # Modelo de embeddings Google Gemini (estável e disponível)
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" # Modelo de embeddings local leve
 GEMINI_MODEL = "gemini-3.5-flash"                   # Modelo LLM Google Gemini (generoso no free tier)
 CHUNK_SIZE = 1000                                   # Tamanho dos chunks de texto
 CHUNK_OVERLAP = 200                                 # Sobreposição entre chunks
@@ -41,26 +41,14 @@ TOP_K_DOCS = 4                                      # Número de chunks recupera
 @st.cache_resource(show_spinner=False)
 def get_embeddings():
     """
-    Inicializa e retorna o modelo de embeddings Google Gemini (nuvem).
-    Nenhum arquivo de modelo é baixado localmente — tudo via API.
+    Inicializa e retorna o modelo de embeddings local HuggingFace.
+    O modelo é baixado uma vez e executado em CPU localmente.
     O cache do Streamlit garante que o objeto seja criado apenas uma vez.
-    Lê a API key via st.secrets (Streamlit Cloud) ou os.getenv() (local).
     """
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    from langchain_community.embeddings import HuggingFaceEmbeddings
 
-    # Lê a chave de API: st.secrets tem prioridade (Streamlit Cloud), depois .env local
-    api_key = st.secrets.get("GOOGLE_API_KEY", None) or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        st.error(
-            "❌ **GOOGLE_API_KEY não encontrada.**\n\n"
-            "No Streamlit Cloud: adicione em Settings → Secrets.\n"
-            "Localmente: verifique o arquivo `.env` na raiz do projeto."
-        )
-        st.stop()
-
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model=EMBEDDING_MODEL,
-        google_api_key=api_key,
+    embeddings = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
     )
     return embeddings
 
