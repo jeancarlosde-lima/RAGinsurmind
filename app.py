@@ -26,7 +26,7 @@ load_dotenv()
 CHROMA_DIR      = "./chroma_db"
 COLLECTION_NAME = "insurmind_agro_v6"
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-GEMINI_MODEL    = "gemini-2.5-flash"
+GEMINI_MODEL    = "gemini-2.0-flash"
 CHUNK_SIZE      = 1000
 CHUNK_OVERLAP   = 200
 TOP_K_DOCS      = 8
@@ -122,9 +122,8 @@ def get_llm():
             google_api_key=api_key,
             temperature=0,
             transport="rest",
-            timeout=90,
+            timeout=60,
             max_retries=1,
-            convert_system_message_to_human=True,
         )
     except Exception as e:
         st.sidebar.warning(f"⚠️ Erro Gemini: {e}")
@@ -134,13 +133,19 @@ def get_llm():
 # Query RAG — direto e transparente
 # ---------------------------------------------------------------------------
 
-PROMPT = """Você é um assistente especialista em seguros agrícolas da Insurmind.
+PROMPT = """Você é um assistente de seguros agrícolas da Insurmind.
 
-Responda SOMENTE com base nos trechos abaixo. Se a resposta não estiver nos trechos,
-diga: "Não encontrei essa informação nos documentos disponíveis."
-Não use conhecimento externo. Responda em português do Brasil.
+Os TRECHOS abaixo são extraídos diretamente dos documentos oficiais da apólice.
+Sua tarefa é responder a PERGUNTA usando APENAS o conteúdo dos TRECHOS.
 
-TRECHOS:
+INSTRUÇÕES:
+- Leia todos os trechos com atenção antes de responder.
+- Se a resposta estiver nos trechos, responda de forma clara e direta.
+- Só diga "Não encontrei essa informação" se os trechos realmente não contiverem nada relevante.
+- NUNCA use conhecimento externo. NUNCA invente.
+- Responda em português do Brasil.
+
+TRECHOS DOS DOCUMENTOS:
 {context}
 
 PERGUNTA: {question}
